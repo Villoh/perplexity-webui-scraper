@@ -2,12 +2,8 @@ name: Deploy Documentation
 
 on:
   push:
-    branches:
-      - prod
-    paths:
-      - "docs/**"
-      - "mkdocs.yml"
-      - "README.md"
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -33,6 +29,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
         with:
+          version: "latest"
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
