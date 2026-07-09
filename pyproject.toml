@@ -61,6 +61,9 @@ all = [
 ]
 
 [dependency-groups]
+build = [
+   "pyinstaller~=6.20.0",
+]
 dev = [
    "prek~=0.4.0",
    "python-dotenv~=1.2.0",
