@@ -377,7 +377,8 @@ jobs:
         id: release_body
         run: |
           VERSION="v${{ needs.check_version.outputs.new_version }}"
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+          RELEASE_TAG="${{ needs.check_version.outputs.release_tag }}"
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 "${RELEASE_TAG}^" 2>/dev/null || git rev-list --max-parents=0 HEAD)
           IMAGE_REPO="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
 
           awk '/^## \[/ { if (p) exit; p=1; next } p { print }' CHANGELOG.md > release_notes.md
@@ -408,7 +409,7 @@ jobs:
             curl -s "https://api.github.com/repos/${{ github.repository }}/commits/$sha" \
               -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
               | grep -oP '(?<="login": ")[^"]+' | head -1
-          done | sort -u | grep -v '^$' | grep -v '\[bot\]')
+          done | sort -u | grep -v '^$' | grep -v '\[bot\]' || true)
 
           if [ -n "$LOGINS" ]; then
             AVATARS=""
