@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (e.g. 1.0.2). Empty = auto-detect from source."
+        description: "Version to release. Empty = auto-detect from source."
         required: false
         type: string
       skip_pypi:
@@ -28,6 +28,10 @@ on:
         default: true
         type: boolean
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check_version:
     name: Check Version
@@ -37,21 +41,21 @@ jobs:
       version_changed: ${{ steps.check.outputs.version_changed }}
       new_version: ${{ steps.check.outputs.new_version }}
       release_tag: ${{ steps.check.outputs.release_tag }}
-      artifact_version: ${{ steps.check.outputs.artifact_version }}
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Check if Version Changed
         id: check
         run: |
           # Manual trigger with explicit version: use it directly
           if [ -n "${{ inputs.version }}" ]; then
+            RELEASE_TAG="v${{ inputs.version }}"
+
             echo "version_changed=true" >> $GITHUB_OUTPUT
             echo "new_version=${{ inputs.version }}" >> $GITHUB_OUTPUT
-            echo "release_tag=v${{ inputs.version }}" >> $GITHUB_OUTPUT
-            echo "artifact_version=v${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
             echo "📦 Manual dispatch — using version ${{ inputs.version }}"
             exit 0
           fi
@@ -65,9 +69,8 @@ jobs:
           fi
 
           echo "release_tag=v$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "artifact_version=v$CURRENT_VERSION" >> $GITHUB_OUTPUT
 
-          # Manual dispatch auto-detected from source. Skip tag check.
+          # Manual dispatch auto-detected from source.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "version_changed=true" >> $GITHUB_OUTPUT
             echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
@@ -75,17 +78,16 @@ jobs:
             exit 0
           fi
 
-          # Push to prod: verify tag doesn't already exist
-          git fetch origin tag "v$CURRENT_VERSION" --no-tags || true
-          if git rev-parse "v$CURRENT_VERSION" >/dev/null 2>&1; then
-            echo "⏭️ Tag v$CURRENT_VERSION already exists. Skipping publish."
+          if git ls-remote --exit-code --tags origin "refs/tags/v$CURRENT_VERSION" >/dev/null; then
             echo "version_changed=false" >> $GITHUB_OUTPUT
+            echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "⏭️ Version $CURRENT_VERSION already has a release tag. Skipping publish pipeline."
             exit 0
           fi
 
           echo "version_changed=true" >> $GITHUB_OUTPUT
           echo "new_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "✅ Versions match ($CURRENT_VERSION) and tag does not exist. Triggering publish pipeline."
+          echo "✅ Versions match ($CURRENT_VERSION) and release tag is missing. Triggering publish pipeline."
 
   build_package:
     name: Build Python Package
@@ -95,7 +97,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
@@ -114,132 +116,13 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  build_executables:
-    name: Build Executable (${{ matrix.target }})
-    needs: check_version
-    if: needs.check_version.outputs.version_changed == 'true'
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: linux-amd64
-            executable: perplexity-webui-scraper
-            archive: tar.gz
-            icon: docs/assets/icon.png
-            nuitka_icon_flag: linux-icon
-          - os: ubuntu-24.04-arm
-            target: linux-arm64
-            executable: perplexity-webui-scraper
-            archive: tar.gz
-            icon: docs/assets/icon.png
-            nuitka_icon_flag: linux-icon
-          - os: macos-latest
-            target: macos-arm64
-            executable: perplexity-webui-scraper
-            archive: tar.gz
-            icon: docs/assets/icon.icns
-            nuitka_icon_flag: macos-app-icon
-          - os: macos-26-intel
-            target: macos-amd64
-            executable: perplexity-webui-scraper
-            archive: tar.gz
-            icon: docs/assets/icon.icns
-            nuitka_icon_flag: macos-app-icon
-          - os: windows-latest
-            target: windows-amd64
-            executable: perplexity-webui-scraper.exe
-            archive: zip
-            icon: docs/assets/icon.ico
-            nuitka_icon_flag: windows-icon-from-ico
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v6
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          version: "latest"
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
-      - name: Install Dependencies
-        run: uv sync --frozen --all-extras --group build
-
-      - name: Cache Nuitka
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/Nuitka
-            ~/AppData/Local/Nuitka/Nuitka/Cache
-            ~/Library/Caches/Nuitka
-          key: ${{ runner.os }}-nuitka-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-nuitka-
-
-      - name: Build Executable with Nuitka
-        run: >-
-          uv run nuitka
-          --standalone
-          --onefile
-          --lto=yes
-          --python-flag=no_asserts
-          --python-flag=no_docstrings
-          --include-package=fastmcp
-          --include-package=mcp
-          --include-package=uvicorn
-          --include-package=curl_cffi
-          --output-dir=dist
-          --output-filename=${{ matrix.executable }}
-          --${{ matrix.nuitka_icon_flag }}=${{ matrix.icon }}
-          src/perplexity_webui_scraper/cli/__main__.py
-
-      - name: Smoke Test Executable
-        shell: bash
-        run: |
-          BIN="dist/${{ matrix.executable }}"
-          chmod +x "$BIN" || true
-          "$BIN" --help
-          "$BIN" api --help
-          "$BIN" token --help
-
-      - name: Package Unix Executable
-        if: matrix.archive == 'tar.gz'
-        shell: bash
-        run: |
-          VERSION="${{ needs.check_version.outputs.artifact_version }}"
-          mkdir -p release/stage
-          cp "dist/${{ matrix.executable }}" release/stage/perplexity-webui-scraper
-          chmod +x release/stage/perplexity-webui-scraper
-          tar -C release/stage -czf "release/perplexity-webui-scraper-${VERSION}-${{ matrix.target }}.tar.gz" perplexity-webui-scraper
-
-      - name: Package Windows Executable
-        if: matrix.archive == 'zip'
-        shell: pwsh
-        run: |
-          $version = "${{ needs.check_version.outputs.artifact_version }}"
-          New-Item -ItemType Directory -Force -Path release/stage | Out-Null
-          Copy-Item "dist/${{ matrix.executable }}" "release/stage/perplexity-webui-scraper.exe"
-          Compress-Archive -Path "release/stage/perplexity-webui-scraper.exe" -DestinationPath "release/perplexity-webui-scraper-$version-${{ matrix.target }}.zip"
-
-      - name: Upload Executable Artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: binary-${{ matrix.target }}
-          path: release/*
-          if-no-files-found: error
-
   publish_container:
     name: Publish Docker Images
     runs-on: ubuntu-latest
     needs:
       - check_version
-      - build_package
-      - build_executables
-    if: needs.check_version.outputs.version_changed == 'true' && (github.event_name != 'workflow_dispatch' || (inputs.skip_docker != true && inputs.skip_docker != 'true'))
+      - publish_pypi
+    if: needs.check_version.outputs.version_changed == 'true' && needs.publish_pypi.result == 'success' && (github.event_name != 'workflow_dispatch' || (inputs.skip_docker != true && inputs.skip_docker != 'true'))
 
     permissions:
       contents: read
@@ -247,7 +130,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -318,7 +201,8 @@ jobs:
     needs:
       - check_version
       - build_package
-    if: needs.check_version.outputs.version_changed == 'true' && (github.event_name != 'workflow_dispatch' || (inputs.skip_pypi != true && inputs.skip_pypi != 'true'))
+      - create_github_release
+    if: needs.check_version.outputs.version_changed == 'true' && needs.create_github_release.result == 'success' && (github.event_name != 'workflow_dispatch' || (inputs.skip_pypi != true && inputs.skip_pypi != 'true'))
 
     permissions:
       id-token: write
@@ -348,7 +232,6 @@ jobs:
     needs:
       - check_version
       - build_package
-      - build_executables
     if: needs.check_version.outputs.version_changed == 'true' && (github.event_name != 'workflow_dispatch' || (inputs.skip_gh_releases != true && inputs.skip_gh_releases != 'true'))
 
     permissions:
@@ -356,23 +239,33 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure Release Tag
+        shell: bash
+        run: |
+          TAG="${{ needs.check_version.outputs.release_tag }}"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG" --force
+            echo "Release tag $TAG already exists at $(git rev-list -n 1 "$TAG")"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" "${{ github.sha }}" -m "$TAG"
+          git push origin "refs/tags/$TAG"
+          echo "Created release tag $TAG at ${{ github.sha }}"
 
       - name: Download Package Artifacts
         uses: actions/download-artifact@v8
         with:
           name: python-dist
           path: dist
-
-      - name: Download Executable Artifacts
-        uses: actions/download-artifact@v8
-        with:
-          pattern: binary-*
-          path: release-binaries
-          merge-multiple: true
 
       - name: Generate Release Notes
         id: release_body
@@ -449,7 +342,6 @@ jobs:
           files: |
             dist/*.whl
             dist/*.tar.gz
-            release-binaries/*
           draft: false
           prerelease: false
         env:

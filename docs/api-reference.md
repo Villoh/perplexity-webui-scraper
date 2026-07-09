@@ -25,12 +25,30 @@ client = Perplexity(
 
 ### Methods
 
-| Method                         | Returns        | Description               |
-| ------------------------------ | -------------- | ------------------------- |
-| `create_conversation(config?)` | `Conversation` | Create a new conversation |
-| `close()`                      | `None`         | Close the HTTP session    |
+| Method                         | Returns           | Description                                           |
+| ------------------------------ | ----------------- | ----------------------------------------------------- |
+| `create_conversation(config?)` | `Conversation`    | Create a new conversation                             |
+| `get_account_session()`        | `AccountSession`  | Read typed account/session data                       |
+| `get_account_settings()`       | `AccountSettings` | Read typed user settings and subscription metadata    |
+| `get_account_profile()`        | `AccountProfile`  | Read session data, falling back to settings if needed |
+| `close()`                      | `None`            | Close the HTTP session                                |
 
 Supports context manager (`with` statement) — closes automatically on exit.
+
+---
+
+## Account Profile
+
+`client.get_account_session()` reads Perplexity's `/api/auth/session` endpoint and returns a typed Pydantic object. `client.get_account_settings()` reads `/rest/user/settings`. `client.get_account_profile()` combines both, using settings only when the session response does not expose enough subscription data.
+
+The normalized `account_tier` is one of `free`, `pro`, `max`, or `unknown`.
+
+```python
+profile = client.get_account_profile()
+
+print(profile.account_tier)
+print(profile.session.user.email if profile.session.user else None)
+```
 
 ---
 
@@ -58,6 +76,10 @@ conversation = client.create_conversation(ConversationConfig(model="perplexity/b
 
 Returns `self` (the `Conversation`) for method chaining or streaming iteration.
 
+Before every prompt request, the library performs a fast `/api/auth/session` check and blocks models that require a higher tier than the authenticated account. If the session response is incomplete, it falls back to `/rest/user/settings`. For example, a Pro account receives `ModelAccessError` before a Max-only model is sent to Perplexity. Free accounts receive `FileAccessError` before file uploads are attempted.
+
+`perplexity/best` adapts to the authenticated account: free accounts use Perplexity's internal `turbo` preference, while Pro/Max accounts use `pplx_pro_upgraded`; both use `copilot` mode.
+
 ### Conversation Properties
 
 | Property         | Type                     | Description                      |
@@ -77,23 +99,24 @@ ConversationConfig(model="perplexity/best")
 conversation.ask("...", model="google/gemini-3.1-pro-thinking-low")
 ```
 
-| Model ID                                | Name                         | Description                                         | Min. Tier |
-| --------------------------------------- | ---------------------------- | --------------------------------------------------- | --------- |
-| `"perplexity/best"`                     | Pro                          | Perplexity Pro (Auto-select). Tier: Pro.            | pro       |
-| `"perplexity/deep-research"`            | Deep research                | Perplexity Deep Research. Tier: Pro.                | pro       |
-| `"perplexity/sonar-2"`                  | Sonar 2                      | Perplexity Sonar 2. Tier: Pro.                      | pro       |
-| `"openai/gpt-5.4"`                      | GPT-5.4                      | OpenAI GPT-5.4. Tier: Pro.                          | pro       |
-| `"openai/gpt-5.4-thinking"`             | GPT-5.4 Thinking             | OpenAI GPT-5.4 (Thinking). Tier: Pro.               | pro       |
-| `"openai/gpt-5.5-thinking"`             | GPT-5.5 Thinking             | OpenAI GPT-5.5 (Thinking). Tier: Max.               | max       |
-| `"google/gemini-3.1-pro-thinking-low"`  | Gemini 3.1 Pro Thinking Low  | Google Gemini 3.1 Pro (Thinking Low). Tier: Pro.    | pro       |
-| `"google/gemini-3.1-pro-thinking-high"` | Gemini 3.1 Pro Thinking High | Google Gemini 3.1 Pro (Thinking High). Tier: Pro.   | pro       |
-| `"anthropic/claude-opus-4.6"`           | Claude Opus 4.6              | Anthropic Claude Opus 4.6. Tier: Max.               | max       |
-| `"anthropic/claude-opus-4.6-thinking"`  | Claude Opus 4.6 Thinking     | Anthropic Claude Opus 4.6 (Thinking). Tier: Max.    | max       |
-| `"anthropic/claude-opus-4.7"`           | Claude Opus 4.7              | Anthropic Claude Opus 4.7. Tier: Max.               | max       |
-| `"anthropic/claude-opus-4.7-thinking"`  | Claude Opus 4.7 Thinking     | Anthropic Claude Opus 4.7 (Thinking). Tier: Max.    | max       |
-| `"moonshot/kimi-k2.6-instant"`          | Kimi K2.6 Instant            | Moonshot AI Kimi K2.6 Instant. Tier: Pro.           | pro       |
-| `"moonshot/kimi-k2.6-thinking"`         | Kimi K2.6 Thinking           | Moonshot AI Kimi K2.6 (Thinking). Tier: Pro.        | pro       |
-| `"nvidia/nemotron-3-super-thinking"`    | Nemotron 3 Super Thinking    | NVIDIA Nemotron 3 Super 120B (Thinking). Tier: Pro. | pro       |
+| Model ID                                 | Name                         | Description                              | Min. Tier |
+| ---------------------------------------- | ---------------------------- | ---------------------------------------- | --------- |
+| `"perplexity/best"`                      | Best                         | Perplexity Best (Auto-select).           | free      |
+| `"perplexity/deep-research"`             | Deep research                | Perplexity Deep Research.                | pro       |
+| `"perplexity/sonar-2"`                   | Sonar 2                      | Perplexity Sonar 2.                      | pro       |
+| `"openai/gpt-5.4"`                       | GPT-5.4                      | OpenAI GPT-5.4.                          | pro       |
+| `"openai/gpt-5.4-thinking"`              | GPT-5.4 Thinking             | OpenAI GPT-5.4 (Thinking).               | pro       |
+| `"openai/gpt-5.5-thinking"`              | GPT-5.5 Thinking             | OpenAI GPT-5.5 (Thinking).               | max       |
+| `"z-ai/glm-5.2"`                         | GLM 5.2                      | Z.ai's most advanced model.              | pro       |
+| `"google/gemini-3.1-pro-thinking-low"`   | Gemini 3.1 Pro Thinking Low  | Google Gemini 3.1 Pro (Thinking Low).    | pro       |
+| `"google/gemini-3.1-pro-thinking-high"`  | Gemini 3.1 Pro Thinking High | Google Gemini 3.1 Pro (Thinking High).   | pro       |
+| `"anthropic/claude-sonnet-4.6"`          | Claude Sonnet 4.6            | Anthropic Claude Sonnet 4.6.             | pro       |
+| `"anthropic/claude-sonnet-4.6-thinking"` | Claude Sonnet 4.6 Thinking   | Anthropic Claude Sonnet 4.6 (Thinking).  | pro       |
+| `"anthropic/claude-opus-4.7"`            | Claude Opus 4.7              | Anthropic Claude Opus 4.7.               | max       |
+| `"anthropic/claude-opus-4.7-thinking"`   | Claude Opus 4.7 Thinking     | Anthropic Claude Opus 4.7 (Thinking).    | max       |
+| `"moonshot/kimi-k2.6-instant"`           | Kimi K2.6 Instant            | Moonshot AI Kimi K2.6 Instant.           | pro       |
+| `"moonshot/kimi-k2.6-thinking"`          | Kimi K2.6 Thinking           | Moonshot AI Kimi K2.6 (Thinking).        | pro       |
+| `"nvidia/nemotron-3-super-thinking"`     | Nemotron 3 Super Thinking    | NVIDIA Nemotron 3 Super 120B (Thinking). | pro       |
 
 Inspect models programmatically:
 
@@ -278,11 +301,16 @@ podman pull ghcr.io/henrique-coder/perplexity-webui-scraper:latest
 podman run -d -p 8000:8000 --name perp-api ghcr.io/henrique-coder/perplexity-webui-scraper:latest
 ```
 
-For local development, use the provided `Containerfile`:
+For local development, use the provided container files:
 
 ```bash
-podman build -t perplexity-api .
-podman run -d -p 8000:8000 --name perp-api perplexity-api
+# Containerfile: installs the `api` extra, exposes port 8000, and starts the REST server.
+podman build -t perplexity-api -f Containerfile .
+podman run --rm -p 8000:8000 --name perp-api perplexity-api
+
+# Containerfile.mcp: installs the `mcp` extra and starts the stdio MCP server.
+podman build -t perplexity-mcp -f Containerfile.mcp .
+podman run --rm -e PERPLEXITY_SESSION_TOKEN=your_token perplexity-mcp
 ```
 
 ### Authentication

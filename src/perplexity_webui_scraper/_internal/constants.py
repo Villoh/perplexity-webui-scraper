@@ -40,6 +40,12 @@ ENDPOINT_AUTH_CSRF: Final[str] = "/api/auth/csrf"
 ENDPOINT_AUTH_SIGNIN: Final[str] = "/api/auth/signin/email"
 """Endpoint to send an email verification code."""
 
+ENDPOINT_AUTH_SESSION: Final[str] = "/api/auth/session"
+"""Endpoint to read the authenticated account session."""
+
+ENDPOINT_USER_SETTINGS: Final[str] = "/rest/user/settings"
+"""Endpoint to read authenticated user settings and subscription metadata."""
+
 ENDPOINT_AUTH_OTP_REDIRECT: Final[str] = "/api/auth/otp-redirect-link"
 """Endpoint to convert an OTP code into a redirect URL."""
 

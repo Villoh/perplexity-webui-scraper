@@ -4,6 +4,8 @@
 
 Install the package using the extra that matches your use case.
 
+The project is distributed as a Python package through PyPI and as optional container images through GHCR. Release assets do not include native standalone executables; use `uv`, `uvx`, or containers instead.
+
 ### As a Library
 
 Install only the core python library for integration into your own Python code.
@@ -26,7 +28,7 @@ uv add "perplexity-webui-scraper[all]"
 
 ### Command Line Tools (CLI)
 
-Install with the `cli` extra to use the `token` generator and the interactive `ask` command directly from your terminal.
+Install with the `cli` extra to use the `token` generator and the interactive `chat` command directly from your terminal.
 
 ```bash
 # From PyPI (stable)
@@ -78,7 +80,7 @@ Authentication is done per-request via `Authorization: Bearer <session_token>`, 
 
 ## Requirements
 
-- **Perplexity Pro or Max account**
+- **Perplexity account**: free accounts can use `perplexity/best`; Pro/Max-only models require the matching paid tier.
 - **Session token** (`__Secure-next-auth.session-token` cookie)
 
 ## Getting Your Session Token
@@ -91,10 +93,10 @@ The library includes an interactive tool to fetch your token via email magic lin
 # Using the library if you installed with [cli]
 uv run perplexity-webui-scraper token
 
-# Running standalone without adding to your project (via uvx)
+# Run without adding the package to your project (via uvx)
 uvx --from perplexity-webui-scraper[cli] perplexity-webui-scraper token
 
-# Running standalone directly from GitHub prod branch
+# Run directly from GitHub prod branch
 uvx --from "perplexity-webui-scraper[cli]@git+https://github.com/henrique-coder/perplexity-webui-scraper.git@prod" perplexity-webui-scraper token
 ```
 

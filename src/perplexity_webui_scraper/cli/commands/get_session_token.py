@@ -248,9 +248,7 @@ def run(
                 _send_otp(session, email, csrf_token)
 
                 console.print("\n[bold cyan]Step 2: Verification[/bold cyan]")
-                console.print(
-                    "  Check your email for a [bold]6-digit code[/bold] or [bold]magic link[/bold]."
-                )
+                console.print("  Check your email for a [bold]6-digit code[/bold] or [bold]magic link[/bold].")
 
                 while True:
                     otp_code = Prompt.ask("  Enter code or paste link", console=console).strip()

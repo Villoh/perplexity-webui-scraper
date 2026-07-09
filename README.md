@@ -22,12 +22,23 @@ Python scraper to extract AI responses from [Perplexity's](https://www.perplexit
 
 This library lets you interact with Perplexity AI programmatically using the same web endpoints as the browser — no official API key required. It supports conversations, file uploads, streaming, an MCP server for AI agents, and a drop-in OpenAI-compatible REST API.
 
-- **Requirements:** A Perplexity Pro or Max account and your browser session token.
+- **Requirements:** A Perplexity account and your browser session token. Free accounts support text prompts; paid tiers are required for Pro/Max models and file uploads.
 - **Key Features:** 15 models (GPT-5.4, Claude Opus, Gemini, Deep Research…), file attachments (images, PDFs, …), streaming, MCP Server for AI agents, OpenAI-compatible REST API, multi-turn conversation thread continuation.
+
+## Community
+
+- [Contributing guide](./CONTRIBUTING.md)
+- [Security policy](./SECURITY.md)
+- [Support guide](./SUPPORT.md)
+- [Code of conduct](./CODE_OF_CONDUCT.md)
+- [Discussions](https://github.com/henrique-coder/perplexity-webui-scraper/discussions)
+- [Sponsor the project](https://github.com/sponsors/henrique-coder)
 
 ## Installation
 
 Install the package depending on your use case:
+
+This project is distributed as a Python package on PyPI and as optional container images on GHCR. GitHub Releases contain the Python wheel and source distribution; native standalone executables are not published.
 
 ### As a Core Library
 
@@ -47,7 +58,7 @@ uv add "perplexity-webui-scraper[all]"
 
 ### CLI Tools
 
-Install with terminal UX dependencies to use the interactive `ask` and `token` CLI commands.
+Install with terminal UX dependencies to use the interactive `chat` and `token` CLI commands.
 
 ```bash
 uv add "perplexity-webui-scraper[cli]"
@@ -84,6 +95,8 @@ from perplexity_webui_scraper import Perplexity
 client = Perplexity(session_token="YOUR_TOKEN")
 conversation = client.create_conversation()
 
+print(client.get_account_profile().account_tier)
+
 conversation.ask("What is quantum computing?")
 print(conversation.answer)
 
@@ -91,6 +104,10 @@ print(conversation.answer)
 conversation.ask("Explain it simpler")
 print(conversation.answer)
 ```
+
+Before each prompt, the library checks `/api/auth/session` and raises `ModelAccessError` if the selected model requires a higher tier than the authenticated account. When the session payload does not expose enough subscription data, it falls back to `/rest/user/settings`. Free accounts can use text prompts, but file attachments raise `FileAccessError`.
+
+`perplexity/best` adapts to the account tier: free accounts use Perplexity's internal `turbo` preference, while Pro/Max accounts use `pplx_pro_upgraded`; both use `copilot` mode.
 
 ### 3. Streaming
 
@@ -121,13 +138,13 @@ for model in MODELS.list_all():
 
 ## Available CLI
 
-| Command                              | Extra | Description                                                                   |
-| ------------------------------------ | ----- | ----------------------------------------------------------------------------- |
-| `perplexity-webui-scraper token`     | `cli` | Interactive email auth wizard to generate a session token (supports TOTP 2FA) |
-| `perplexity-webui-scraper ask`       | `cli` | Ask Perplexity AI questions with real-time streaming output                   |
-| `perplexity-webui-scraper ask setup` | `cli` | Configure saved token and default model for the ask command                   |
-| `perplexity-webui-scraper mcp`       | `mcp` | Start the MCP server                                                          |
-| `perplexity-webui-scraper api`       | `api` | Start the OpenAI-compatible REST API server                                   |
+| Command                               | Extra | Description                                                                   |
+| ------------------------------------- | ----- | ----------------------------------------------------------------------------- |
+| `perplexity-webui-scraper token`      | `cli` | Interactive email auth wizard to generate a session token (supports TOTP 2FA) |
+| `perplexity-webui-scraper chat`       | `cli` | Ask Perplexity AI questions with real-time streaming output                   |
+| `perplexity-webui-scraper chat setup` | `cli` | Configure saved token and default model for the chat command                  |
+| `perplexity-webui-scraper mcp`        | `mcp` | Start the MCP server                                                          |
+| `perplexity-webui-scraper api`        | `api` | Start the OpenAI-compatible REST API server                                   |
 
 ## OpenAI-Compatible API
 
@@ -167,9 +184,11 @@ podman run --rm -e PERPLEXITY_SESSION_TOKEN=your_token ghcr.io/henrique-coder/pe
 For local development, you can still build the provided container files:
 
 ```bash
+# API image: installs the `api` extra, exposes port 8000, and starts the REST server.
 podman build -t perplexity-api -f Containerfile .
 podman run --rm -it -p 8000:8000 perplexity-api
 
+# MCP image: installs the `mcp` extra and starts the stdio MCP server. It does not expose an HTTP port.
 podman build -t perplexity-mcp -f Containerfile.mcp .
 podman run --rm -it -e PERPLEXITY_SESSION_TOKEN=your_token perplexity-mcp
 ```

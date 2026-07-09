@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from perplexity_webui_scraper._internal.constants import ENDPOINT_AUTH_SESSION, ENDPOINT_USER_SETTINGS
 from perplexity_webui_scraper._internal.logging import configure_logging, get_logger
 from perplexity_webui_scraper.config.client import ClientConfig
 from perplexity_webui_scraper.config.conversation import ConversationConfig
+from perplexity_webui_scraper.core.account import AccountProfile, AccountSession, AccountSettings
 from perplexity_webui_scraper.core.conversation import Conversation
 from perplexity_webui_scraper.http.client import HTTPClient
 
@@ -79,6 +81,26 @@ class Perplexity:
             ready to receive queries.
         """
         return Conversation(self._http, config or ConversationConfig())
+
+    def get_account_session(self) -> AccountSession:
+        """Return typed account/session information for the current token.
+
+        This reads Perplexity's ``/api/auth/session`` endpoint and normalizes
+        the account tier into ``free``, ``pro``, ``max``, or ``unknown``.
+        """
+        response = self._http.get(ENDPOINT_AUTH_SESSION, rate_limited=False)
+        return AccountSession.model_validate(response.json())
+
+    def get_account_settings(self) -> AccountSettings:
+        """Return typed user settings for the current token."""
+        response = self._http.get(ENDPOINT_USER_SETTINGS, rate_limited=False)
+        return AccountSettings.model_validate(response.json())
+
+    def get_account_profile(self) -> AccountProfile:
+        """Return combined account data, using settings when session tier is incomplete."""
+        session = self.get_account_session()
+        settings = self.get_account_settings() if session.account_tier == "unknown" else None
+        return AccountProfile(session=session, settings=settings)
 
     def close(self) -> None:
         """Close the HTTP session and release all underlying resources."""

@@ -24,7 +24,14 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from typer import Exit
 
-from perplexity_webui_scraper import ConversationConfig, Coordinates, Perplexity
+from perplexity_webui_scraper import (
+    ConversationConfig,
+    Coordinates,
+    FileAccessError,
+    ModelAccessError,
+    Perplexity,
+    ResponseParsingError,
+)
 from perplexity_webui_scraper.cli.commands._token_store import (
     get_config_dir,
     get_default_model,
@@ -84,6 +91,10 @@ def run(
         console.print("Run [bold cyan]perplexity-webui-scraper chat setup[/bold cyan] to change your default model.")
         raise Exit(code=1)  # noqa: B904
 
+    if (latitude is None) != (longitude is None):
+        console.print("[red]⛔ Latitude and longitude must be provided together.[/red]")
+        raise Exit(code=1)
+
     coords = (
         Coordinates(latitude=latitude, longitude=longitude) if latitude is not None and longitude is not None else None
     )
@@ -107,6 +118,19 @@ def run(
     try:
         with Perplexity(session_token=session_token) as client:
             conversation = client.create_conversation(config)
+
+            def stream_with_fallback(query_str: str, files_list: list[Any] | None):
+                nonlocal config, conversation
+
+                try:
+                    yield from conversation.ask(query_str, files=files_list, stream=True)
+                except ResponseParsingError as exc:
+                    if not _should_retry_best_as_writing(exc, resolved_model, search_focus):
+                        raise
+
+                    config = config.model_copy(update={"search_focus": "writing"})
+                    conversation = client.create_conversation(config)
+                    yield from conversation.ask(query_str, files=files_list, stream=True)
 
             if not raw:
                 console.print()
@@ -159,7 +183,7 @@ def run(
                     )
 
                 if raw:
-                    for _ in conversation.ask(current_query, files=typed_files, stream=True):
+                    for _ in stream_with_fallback(current_query, typed_files):
                         pass
 
                     if conversation.answer:
@@ -175,7 +199,7 @@ def run(
                         query_str: str, files_list: list[Any] | None, queue_obj: Queue[tuple[str, Any]]
                     ) -> None:
                         try:
-                            for chunk in conversation.ask(query_str, files=files_list, stream=True):
+                            for chunk in stream_with_fallback(query_str, files_list):
                                 queue_obj.put(("chunk", chunk))
                         except Exception as e:
                             queue_obj.put(("error", e))
@@ -196,9 +220,10 @@ def run(
                             try:
                                 msg_type, msg_data = q.get(timeout=0.1)
                                 if msg_type == "chunk":
-                                    if msg_data.answer:
+                                    rendered = msg_data.answer or msg_data.last_chunk
+                                    if rendered:
                                         first_chunk_received = True
-                                        live.update(Markdown(msg_data.answer))
+                                        live.update(Markdown(rendered))
                                 elif msg_type == "error":
                                     raise msg_data
                                 elif msg_type == "done":
@@ -223,12 +248,30 @@ def run(
                     break
 
     except Exception as exc:
+        if isinstance(exc, ModelAccessError):
+            console.print(f"[red]⛔ {exc}[/red]")
+            raise Exit(code=1) from exc
+
+        if isinstance(exc, FileAccessError):
+            console.print(f"[red]⛔ {exc}[/red]")
+            raise Exit(code=1) from exc
+
+        if isinstance(exc, ResponseParsingError):
+            console.print(f"[red]⛔ Perplexity failed to process this query: {exc.message}[/red]")
+            console.print("Try again or run with [bold cyan]--search-focus writing[/bold cyan].")
+            raise Exit(code=1) from exc
+
         error_msg = str(exc)
         if "authentication" in error_msg.lower() or "session" in error_msg.lower() or "401" in error_msg:
             console.print("[red]⛔ Authentication failed. Your token may be invalid or expired.[/red]")
             console.print("Run [bold cyan]perplexity-webui-scraper chat setup[/bold cyan] to reconfigure.")
             raise Exit(code=1)  # noqa: B904
         raise
+
+
+def _should_retry_best_as_writing(exc: ResponseParsingError, model: str, search_focus: str) -> bool:
+    """Return whether CLI should retry Perplexity Best with writing mode."""
+    return model == "perplexity/best" and search_focus == "web" and "query processing failed" in exc.message.lower()
 
 
 def setup() -> None:
