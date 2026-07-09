@@ -219,8 +219,8 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - check_version
-      - publish_pypi
-    if: needs.check_version.outputs.version_changed == 'true' && needs.publish_pypi.result == 'success' && (github.event_name != 'workflow_dispatch' || (inputs.skip_docker != true && inputs.skip_docker != 'true'))
+      - create_github_release
+    if: needs.check_version.outputs.version_changed == 'true' && needs.create_github_release.result == 'success' && (github.event_name != 'workflow_dispatch' || (inputs.skip_docker != true && inputs.skip_docker != 'true'))
 
     permissions:
       contents: read
