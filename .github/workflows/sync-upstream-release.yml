@@ -80,6 +80,9 @@ jobs:
             "+refs/heads/${SYNC_BRANCH}:refs/remotes/origin/${SYNC_BRANCH}" \
             || true
           git checkout -B "$SYNC_BRANCH" "origin/${INTEGRATION_BRANCH}"
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
           if ! git merge --no-ff --no-commit "$UPSTREAM_TAG"; then
             # Workflows belong to this fork; accept our versions before checking
             # whether the upstream merge has conflicts needing human resolution.
@@ -96,9 +99,6 @@ jobs:
           # Do not import upstream release/publish workflows into this fork.
           git restore --source=HEAD --staged --worktree .github/workflows
           git add .github/workflows
-          git config user.name "github-actions[bot]"
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "merge: integrate upstream ${VERSION} into integration"
           git push --force-with-lease origin "$SYNC_BRANCH"
           echo "updated=true" >> "$GITHUB_OUTPUT"
