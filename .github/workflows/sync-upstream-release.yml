@@ -47,29 +47,34 @@ jobs:
             "+refs/heads/${UPSTREAM_BRANCH}:refs/remotes/${UPSTREAM_REF}" \
             "+refs/tags/*:refs/tags/upstream/*"
 
+          CURRENT_VERSION=$(grep -oP '(?<=^version = ")[^"]+' pyproject.toml)
           UPSTREAM_TAG=
           while read -r tag; do
             [[ "$tag" =~ ^upstream/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
-            if git merge-base --is-ancestor "$tag" "$UPSTREAM_REF"; then
+            VERSION=${tag#upstream/v}
+            LATEST_VERSION=$(printf '%s\n%s\n' "$CURRENT_VERSION" "$VERSION" \
+              | sort -V | tail -n 1)
+            if [ "$VERSION" != "$LATEST_VERSION" ] || \
+              [ "$VERSION" = "$CURRENT_VERSION" ]; then
+              continue
+            fi
+            if git merge-base --is-ancestor "$tag" "$UPSTREAM_REF" && \
+              ! git merge-base --is-ancestor \
+                "$tag" "origin/${INTEGRATION_BRANCH}"; then
               UPSTREAM_TAG=$tag
               break
             fi
           done < <(
             git for-each-ref --format='%(refname:short)' \
-              --sort=-version:refname refs/tags/upstream/v*
+              --sort=version:refname refs/tags/upstream/v*
           )
 
           if [ -z "$UPSTREAM_TAG" ]; then
-            echo "No stable upstream release tag found on ${UPSTREAM_BRANCH}."
-            exit 1
+            echo "No newer upstream release is pending."
+            exit 0
           fi
 
           VERSION=${UPSTREAM_TAG#upstream/}
-          if git merge-base --is-ancestor \
-            "$UPSTREAM_TAG" "origin/${INTEGRATION_BRANCH}"; then
-            echo "${VERSION} is already integrated."
-            exit 0
-          fi
 
           git config user.name "github-actions[bot]"
           git config user.email \
