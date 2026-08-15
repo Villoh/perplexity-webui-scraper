@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
 
 concurrency:
@@ -91,3 +92,11 @@ jobs:
           git add .github/workflows
           git commit -m "merge: integrate upstream ${VERSION} into integration"
           git push origin "HEAD:refs/heads/${INTEGRATION_BRANCH}"
+
+          RELEASE_VERSION=${VERSION#v}
+          GH_TOKEN="$GITHUB_TOKEN" gh workflow run publish.yml \
+            --repo "$GITHUB_REPOSITORY" --ref "$INTEGRATION_BRANCH" \
+            -f version="$RELEASE_VERSION" \
+            -f skip_pypi=true \
+            -f skip_docker=false \
+            -f skip_gh_releases=false
