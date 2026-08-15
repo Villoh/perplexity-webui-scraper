@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from pytest import raises
+from pytest import raises, warns
 
 from perplexity_webui_scraper._internal.constants import ENDPOINT_AUTH_SESSION, ENDPOINT_USER_SETTINGS
-from perplexity_webui_scraper._internal.exceptions import FileAccessError, ModelAccessError
+from perplexity_webui_scraper._internal.exceptions import FileAccessError, ModelAccessError, ModelRiskWarning
 from perplexity_webui_scraper.config.conversation import ConversationConfig
 from perplexity_webui_scraper.core.account import (
     AccountSession,
@@ -143,25 +143,40 @@ def test_ensure_model_access_blocks_max_model_for_pro_session() -> None:
     assert exc_info.value.account_tier == "pro"
 
 
-def test_conversation_checks_session_before_prompt_request() -> None:
+def test_non_available_model_defers_entitlement_check_to_backend() -> None:
     fake_http = _FakeHTTP(_session_payload("pro"))
     conversation = Conversation(
         cast("HTTPClient", fake_http),
-        ConversationConfig(model="anthropic/claude-opus-4.8"),
+        ConversationConfig(model="anthropic/claude45haiku", allow_risky_model=True),
     )
 
-    with raises(ModelAccessError):
+    with warns(ModelRiskWarning):
         conversation.ask("hello")
 
     assert fake_http.get_calls == [(ENDPOINT_AUTH_SESSION, False)]
-    assert fake_http.stream_called is False
+    assert fake_http.stream_called is True
+
+
+def test_acknowledged_non_available_model_defers_tier_check_to_backend() -> None:
+    fake_http = _FakeHTTP(_session_payload("pro"))
+    conversation = Conversation(
+        cast("HTTPClient", fake_http),
+        ConversationConfig(model="anthropic/claude45haiku", allow_risky_model=True),
+    )
+
+    with warns(ModelRiskWarning):
+        conversation.ask("hello")
+
+    assert fake_http.get_calls == [(ENDPOINT_AUTH_SESSION, False)]
+    assert fake_http.ask_payload is not None
+    assert fake_http.ask_payload["params"]["model_preference"] == "claude45haiku"
 
 
 def test_best_model_uses_turbo_copilot_for_free_account() -> None:
     fake_http = _FakeHTTP(_free_session_payload())
     conversation = Conversation(
         cast("HTTPClient", fake_http),
-        ConversationConfig(model="perplexity/best"),
+        ConversationConfig(model="perplexity/best", allow_risky_model=True),
     )
 
     conversation.ask("hello")
@@ -176,7 +191,7 @@ def test_best_model_uses_pro_upgraded_copilot_for_pro_account() -> None:
     fake_http = _FakeHTTP(_session_payload("pro"))
     conversation = Conversation(
         cast("HTTPClient", fake_http),
-        ConversationConfig(model="perplexity/best"),
+        ConversationConfig(model="perplexity/best", allow_risky_model=True),
     )
 
     conversation.ask("hello")
@@ -187,6 +202,25 @@ def test_best_model_uses_pro_upgraded_copilot_for_pro_account() -> None:
     assert fake_http.ask_payload["params"]["mode"] == "copilot"
 
 
+def test_custom_model_builds_payload_after_risk_acknowledgement() -> None:
+    fake_http = _FakeHTTP(_session_payload("pro"))
+    conversation = Conversation(
+        cast("HTTPClient", fake_http),
+        ConversationConfig(
+            model="custom:gpt57",
+            allow_risky_model=True,
+            custom_model_mode="search",
+        ),
+    )
+
+    with warns(ModelRiskWarning):
+        conversation.ask("hello")
+
+    assert fake_http.ask_payload is not None
+    assert fake_http.ask_payload["params"]["model_preference"] == "gpt57"
+    assert fake_http.ask_payload["params"]["mode"] == "search"
+
+
 def test_unknown_session_tier_falls_back_to_user_settings() -> None:
     fake_http = _FakeHTTP(
         {"expires": "2026-07-30T03:28:20.712115624Z", "user": {"email": "user@example.com"}},
@@ -194,7 +228,7 @@ def test_unknown_session_tier_falls_back_to_user_settings() -> None:
     )
     conversation = Conversation(
         cast("HTTPClient", fake_http),
-        ConversationConfig(model="perplexity/best"),
+        ConversationConfig(model="perplexity/best", allow_risky_model=True),
     )
 
     conversation.ask("hello")
@@ -209,7 +243,7 @@ def test_free_account_cannot_send_files() -> None:
     fake_http = _FakeHTTP(_free_session_payload())
     conversation = Conversation(
         cast("HTTPClient", fake_http),
-        ConversationConfig(model="perplexity/best"),
+        ConversationConfig(model="perplexity/best", allow_risky_model=True),
     )
 
     with raises(FileAccessError) as exc_info:
@@ -223,7 +257,7 @@ def test_free_account_cannot_send_files() -> None:
 def test_client_get_account_session_uses_fast_session_request() -> None:
     fake_http = _FakeHTTP(_session_payload("pro"))
     client = Perplexity.__new__(Perplexity)
-    client._http = fake_http  # type: ignore[assignment]
+    client._http = fake_http  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
 
     session = client.get_account_session()
 
@@ -237,7 +271,7 @@ def test_client_get_account_profile_uses_settings_only_when_needed() -> None:
         settings_payload=_free_settings_payload(),
     )
     client = Perplexity.__new__(Perplexity)
-    client._http = fake_http  # type: ignore[assignment]
+    client._http = fake_http  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
 
     profile = client.get_account_profile()
 

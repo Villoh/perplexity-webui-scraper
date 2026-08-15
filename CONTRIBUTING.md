@@ -15,7 +15,7 @@ This project wraps private Perplexity WebUI endpoints. Changes should be conserv
 
 Requirements:
 
-- Python 3.12, 3.13, or 3.14
+- Python 3.11, 3.12, 3.13, or 3.14
 - `uv`
 - `pnpm`
 - `just`
@@ -37,9 +37,31 @@ Useful commands:
 | `uv run --group docs mkdocs build --strict` | Build the documentation site with MkDocs using the `docs` dependency group. `--strict` fails on documentation warnings. |
 | `uv build`                                  | Build the Python source distribution and wheel.                                                                         |
 
+Install the Git hook once per checkout:
+
+```bash
+uv run prek install --hook-type pre-push
+```
+
+The full `just lint` check runs at `git push`, not at `git add` or `git commit`, so local commits remain quick while pushes are checked before they leave the machine. The CI workflow remains the authoritative check for the branch. If an exceptional situation requires bypassing the local hook, use `git push --no-verify` only after running the checks manually.
+
 `mkdocs` is the documentation generator used by this project. The command above does not publish anything; it only verifies that the local documentation can be built successfully.
 
 ## Pull Request Checklist
+
+### Branch workflow
+
+- `dev` is the default integration branch. Create feature and fix branches from `dev`, and open normal pull requests back into `dev`.
+- `prod` contains only release-ready code. Do not push to it directly or target it from feature branches.
+- Promote a release with a same-repository pull request from `dev` to `prod` after version, changelog, tests, documentation, and package build are ready.
+- After a release promotion, continue new work from the updated `dev` branch.
+
+### Release workflow
+
+1. Keep the target section in `CHANGELOG.md` as `## [X.Y.Z] - Unreleased` while developing.
+2. In the final `dev` to `prod` promotion PR, replace `Unreleased` with the UTC release date (`YYYY-MM-DD`).
+3. On `prod`, run **Publish Release** once in `validate` mode, review its build output, then rerun it with `publish` selected.
+4. The workflow publishes the Python package, API and MCP images, and documentation before creating the immutable tag and GitHub Release. It can safely resume after an interrupted PyPI publication.
 
 - Keep changes focused on one concern.
 - Add or update tests for behavior changes.
@@ -52,18 +74,26 @@ Useful commands:
 
 Model definitions live in `src/perplexity_webui_scraper/_static/models.json`.
 
+Keep the catalog ordered for people reading it: default entry points first (`perplexity/best` and `perplexity/deep-research`), then the remaining official WebUI models in their current UI order, followed by historical identifiers from newest to oldest. Do not sort by status or test date; both are operational metadata and change over time.
+
 When adding or correcting a model, use Perplexity's internal model config endpoint when available:
 
 ```text
-https://www.perplexity.ai/rest/models/config
+https://www.perplexity.ai/rest/models/config/v2
 ```
 
 The WebUI network panel can also be used as a fallback to confirm `model_preference`, mode, provider, and tier behavior. Always redact cookies, session tokens, request headers, account IDs, and private prompt data before sharing evidence in an issue or pull request.
 
+The picker is only a subset of the backend registry: absence from the picker does not prove that a model identifier has stopped working. Never delete an existing `models.json` entry. Set `is_official` to `true` only when the model is listed by the official WebUI. Use exactly one operational `status`: `available` for models confirmed to work normally, `unknown` for unverified models (the default for new or custom identifiers), and `unavailable` only after backend failure is confirmed. Official listing does not imply that a model has been tested, and account-tier denial alone does not make a model unavailable. Historical entries remain documented for compatibility.
+
+Set `last_tested_at` to the UTC timestamp of the live test that supports the current `status`. Leave it as `null` when no conclusive live test has been performed; presence in `/rest/models/config/v2` alone is not a successful model test.
+
+Tests and generated documentation must derive model IDs, counts, statuses, and timestamps from the loaded registry. Do not hardcode a snapshot of `models.json`; use small synthetic registry fixtures for status behavior and reserve literal model IDs for explicit public-compatibility tests only.
+
 Model changes should update:
 
 - `src/perplexity_webui_scraper/_static/models.json`
-- affected README or MkDocs model tables
+- generated README or MkDocs model tables (`just model-docs`)
 - tests that validate the model registry, when applicable
 - `CHANGELOG.md` if the change is user-facing
 

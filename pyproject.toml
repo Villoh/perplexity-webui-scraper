@@ -1,19 +1,19 @@
 [build-system]
 requires = [
-    "uv_build>=0.11.28,<0.12.0",
+    "uv_build>=0.12.0, <0.13.0",
 ]
 build-backend = "uv_build"
 
 [project]
 name = "perplexity-webui-scraper"
-version = "1.1.2"
+version = "1.1.4"
 description = "An advanced, high-performance Python client, MCP server, and REST API for reverse-engineering Perplexity AI's WebUI."
 authors = [
     { name = "Henrique Moreira", email = "78804989+henrique-coder@users.noreply.github.com" },
 ]
 license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.12, <3.15"
+requires-python = ">=3.11, <3.15"
 keywords = [
     "perplexity",
     "ai",
@@ -27,6 +27,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
@@ -35,22 +36,22 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "curl-cffi~=0.15.0",
+    "curl-cffi~=0.16.0",
     "loguru~=0.7.0",
     "orjson~=3.11.0",
     "pydantic>=2.13.0, <3.0.0",
-    "typer~=0.26.0",
+    "typer~=0.27.0",
 ]
 
 [project.optional-dependencies]
 cli = [
-    "cryptography>=49.0.0, <50.0.0",
-    "platformdirs~=4.10.0",
+    "cryptography>=50.0.0, <51.0.0",
+    "platformdirs~=4.11.0",
     "pyperclip~=1.11.0",
     "rich~=15.0.0",
 ]
 api = [
-    "fastapi~=0.139.0",
+    "fastapi~=0.141.0",
     "uvicorn[standard]~=0.51.0",
 ]
 mcp = [
@@ -65,8 +66,10 @@ build = [
    "pyinstaller~=6.20.0",
 ]
 dev = [
-    "prek~=0.4.0",
-    "python-dotenv~=1.2.0",
+    { include-group = "docs" },
+    { include-group = "lint" },
+    { include-group = "test" },
+    "prek~=0.4.10",
 ]
 docs = [
     "mkdocs~=1.6.0",
@@ -74,8 +77,9 @@ docs = [
     "mkdocstrings[python]~=1.0.0",
 ]
 lint = [
-    "ruff~=0.15.0",
-    "ty~=0.0.30",
+    "ruff~=0.16.0",
+    "ty~=0.0.60",
+    "zizmor~=1.28.0",
 ]
 test = [
     "httpx~=0.28.0",
@@ -98,7 +102,7 @@ Changelog = "https://github.com/henrique-coder/perplexity-webui-scraper/releases
 [tool.ruff]
 line-length = 120
 indent-width = 4
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = [
@@ -141,6 +145,7 @@ ignore = [
     "PLR0913",
     "PLR0915",
     "PLR2004",
+    "PLR0917",
     "D100",
     "D101",
     "D102",

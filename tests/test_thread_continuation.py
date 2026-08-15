@@ -43,6 +43,9 @@ class _MockModelRegistry:
     def list_all(self) -> list[MagicMock]:
         return [MagicMock(id=MODEL_ID)]
 
+    def resolve_for_use(self, item: str, **_kwargs: object) -> MagicMock:
+        return self.resolve(item)
+
 
 _mock_models = _MockModelRegistry()
 
@@ -76,6 +79,7 @@ def _make_mock_client(conv: MagicMock | None = None) -> MagicMock:
         conv = _make_mock_conversation()
 
     client.create_conversation = MagicMock(return_value=conv)
+
     return client
 
 

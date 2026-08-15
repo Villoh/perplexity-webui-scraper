@@ -86,6 +86,14 @@ def chat(
         bool,
         Option("--raw", "-r", help="Plain text output without Rich formatting."),
     ] = False,
+    allow_risky_model: Annotated[
+        bool,
+        Option("--allow-risky-model", help="Acknowledge a model whose status is not available."),
+    ] = False,
+    custom_model_mode: Annotated[
+        str,
+        Option("--custom-model-mode", help="Backend mode for custom:<identifier> models."),
+    ] = "copilot",
     token: Annotated[
         str | None,
         Option("--token", "-t", help="Session token override (skips saved token)."),
@@ -99,6 +107,7 @@ def chat(
         from perplexity_webui_scraper.cli.commands.chat import setup as run_setup  # noqa: PLC0415
 
         run_setup()
+
         return
 
     # Start REPL or single query if query is provided
@@ -121,6 +130,8 @@ def chat(
         save=save,
         copy=copy,
         raw=raw,
+        allow_risky_model=allow_risky_model,
+        custom_model_mode=custom_model_mode,
         token=token,
     )
 

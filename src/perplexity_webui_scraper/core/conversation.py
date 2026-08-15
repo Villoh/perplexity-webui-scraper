@@ -15,7 +15,11 @@ from perplexity_webui_scraper.core.account import (
     model_for_account,
 )
 from perplexity_webui_scraper.core.files import _FileInfo, upload_file, validate_files
-from perplexity_webui_scraper.core.parser import parse_sse_line, process_sse_data
+from perplexity_webui_scraper.core.parser import (
+    SchematizedStreamState,
+    parse_sse_line,
+    process_sse_data,
+)
 from perplexity_webui_scraper.core.payload import build_payload
 from perplexity_webui_scraper.core.response import Response, SearchResultItem
 from perplexity_webui_scraper.models.registry import MODELS
@@ -28,6 +32,7 @@ if TYPE_CHECKING:
     from perplexity_webui_scraper._internal.types import CitationMode, FileInput
     from perplexity_webui_scraper.config.conversation import ConversationConfig
     from perplexity_webui_scraper.http.client import HTTPClient
+    from perplexity_webui_scraper.models.types import ModelMode
 
 
 _DEFAULT_MODEL: str = "perplexity/best"
@@ -59,6 +64,7 @@ class Conversation:
         "_http",
         "_raw_data",
         "_read_write_token",
+        "_schematized_state",
         "_search_results",
         "_stream_generator",
     )
@@ -73,6 +79,7 @@ class Conversation:
         self._chunks: list[str] = []
         self._search_results: list[SearchResultItem] = []
         self._raw_data: dict[str, Any] = {}
+        self._schematized_state = SchematizedStreamState()
         self._stream_generator: Generator[Response, None, None] | None = None
 
     # ------------------------------------------------------------------
@@ -105,6 +112,8 @@ class Conversation:
         files: list[FileInput] | None = None,
         citation_mode: CitationMode | None = None,
         stream: bool = False,
+        allow_risky_model: bool | None = None,
+        custom_model_mode: ModelMode | None = None,
     ) -> Conversation:
         """Send a query and return ``self`` for chaining or streaming iteration.
 
@@ -117,12 +126,19 @@ class Conversation:
             files: Optional list of attachments.
             citation_mode: Per-query citation override.
             stream: If ``True``, sets up an internal generator for streaming.
+            allow_risky_model: Per-query acknowledgement for a model whose
+                status is not ``"available"``.
+            custom_model_mode: Backend mode for a ``custom:<identifier>`` model.
 
         Returns:
             ``self`` to support method chaining or iteration.
         """
         model_id = model or self._config.model or _DEFAULT_MODEL
-        resolved_model = MODELS.resolve(model_id)
+        resolved_model = MODELS.resolve_for_use(
+            model_id,
+            allow_risky_model=(self._config.allow_risky_model if allow_risky_model is None else allow_risky_model),
+            custom_model_mode=custom_model_mode or self._config.custom_model_mode,
+        )
         resolved_model = self._validate_request_access(resolved_model, has_files=bool(files))
         self._citation_mode = citation_mode if citation_mode is not None else self._config.citation_mode
 
@@ -194,8 +210,10 @@ class Conversation:
         profile = AccountProfile(session=session, settings=settings)
         account_tier = profile.account_tier
         effective_session = AccountSession.model_validate({"user": {"subscription_tier": account_tier}})
-        ensure_model_access(effective_session, model)
+        if model.status == "available":
+            ensure_model_access(effective_session, model)
         ensure_file_access(account_tier, has_files)
+
         return model_for_account(model, account_tier)
 
     def _reset_state(self) -> None:
@@ -204,6 +222,7 @@ class Conversation:
         self._chunks = []
         self._search_results = []
         self._raw_data = {}
+        self._schematized_state = SchematizedStreamState()
         self._stream_generator = None
 
     def _apply_sse_data(self, data: dict[str, Any]) -> None:
@@ -217,7 +236,12 @@ class Conversation:
         if "read_write_token" in data:
             self._read_write_token = data["read_write_token"]
 
-        answer, chunks, updated_results, raw_data = process_sse_data(data, self._search_results, self._citation_mode)
+        answer, chunks, updated_results, raw_data = process_sse_data(
+            data,
+            self._search_results,
+            self._citation_mode,
+            self._schematized_state,
+        )
 
         if updated_results is not self._search_results:
             self._search_results = updated_results

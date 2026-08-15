@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime  # noqa: TC003
 from time import time
 from typing import Literal
 from uuid import uuid4
@@ -23,6 +24,16 @@ class ModelObject(BaseModel):
     object: Literal["model"] = "model"
     created: int = 0
     owned_by: str = "perplexity"
+    perplexity: ModelCatalogMetadata
+
+
+class ModelCatalogMetadata(BaseModel):
+    """Perplexity-specific availability metadata for a catalog model."""
+
+    min_tier: Literal["free", "pro", "max"] | None
+    is_official: bool
+    status: Literal["available", "unknown", "unavailable"]
+    last_tested_at: datetime | None
 
 
 class ModelList(BaseModel):
