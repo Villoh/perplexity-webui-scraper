@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 concurrency:
   group: sync-upstream-release
@@ -17,7 +16,6 @@ env:
   UPSTREAM_REPOSITORY: henrique-coder/perplexity-webui-scraper
   UPSTREAM_BRANCH: prod
   INTEGRATION_BRANCH: integration
-  SYNC_BRANCH: automation/upstream-release
 
 jobs:
   sync:
@@ -25,14 +23,13 @@ jobs:
 
     steps:
       - name: Checkout integration
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
         with:
           ref: integration
           fetch-depth: 0
           persist-credentials: false
 
       - name: Merge the latest upstream release
-        id: merge
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -67,19 +64,12 @@ jobs:
           fi
 
           VERSION=${UPSTREAM_TAG#upstream/}
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
           if git merge-base --is-ancestor \
             "$UPSTREAM_TAG" "origin/${INTEGRATION_BRANCH}"; then
             echo "${VERSION} is already integrated."
-            echo "updated=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          git fetch origin \
-            "+refs/heads/${SYNC_BRANCH}:refs/remotes/origin/${SYNC_BRANCH}" \
-            || true
-          git checkout -B "$SYNC_BRANCH" "origin/${INTEGRATION_BRANCH}"
           git config user.name "github-actions[bot]"
           git config user.email \
             "41898282+github-actions[bot]@users.noreply.github.com"
@@ -100,36 +90,4 @@ jobs:
           git restore --source=HEAD --staged --worktree .github/workflows
           git add .github/workflows
           git commit -m "merge: integrate upstream ${VERSION} into integration"
-          git push --force-with-lease origin "$SYNC_BRANCH"
-          echo "updated=true" >> "$GITHUB_OUTPUT"
-
-      - name: Create or update sync pull request
-        if: steps.merge.outputs.updated == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.merge.outputs.version }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          UPSTREAM_RELEASE_URL="https://github.com/${UPSTREAM_REPOSITORY}/releases/tag/${VERSION}"
-          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
-          Automated merge of upstream ${VERSION} into ${INTEGRATION_BRANCH}.
-
-          Upstream: ${UPSTREAM_RELEASE_URL}
-
-          This fork keeps its .github/workflows files. A conflict elsewhere
-          fails the workflow rather than opening a partial PR.
-          EOF
-
-          PR_URL=$(gh pr list --head "$SYNC_BRANCH" \
-            --base "$INTEGRATION_BRANCH" --state open \
-            --json url --jq '.[0].url')
-          if [ -n "$PR_URL" ]; then
-            gh pr edit "$PR_URL" --title "sync: integrate upstream ${VERSION}" \
-              --body-file "$RUNNER_TEMP/pr-body.md"
-          else
-            gh pr create --base "$INTEGRATION_BRANCH" --head "$SYNC_BRANCH" \
-              --title "sync: integrate upstream ${VERSION}" \
-              --body-file "$RUNNER_TEMP/pr-body.md"
-          fi
+          git push origin "HEAD:refs/heads/${INTEGRATION_BRANCH}"
