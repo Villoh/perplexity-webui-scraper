@@ -1,0 +1,102 @@
+name: Sync upstream release
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: sync-upstream-release
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPOSITORY: henrique-coder/perplexity-webui-scraper
+  UPSTREAM_BRANCH: prod
+  INTEGRATION_BRANCH: integration
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout integration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          ref: integration
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Merge the latest upstream release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          UPSTREAM_URL="https://github.com/${UPSTREAM_REPOSITORY}.git"
+          UPSTREAM_REF="upstream/${UPSTREAM_BRANCH}"
+          git remote add upstream "$UPSTREAM_URL" 2>/dev/null || \
+            git remote set-url upstream "$UPSTREAM_URL"
+          git fetch --force upstream \
+            "+refs/heads/${UPSTREAM_BRANCH}:refs/remotes/${UPSTREAM_REF}" \
+            "+refs/tags/*:refs/tags/upstream/*"
+
+          UPSTREAM_TAG=
+          while read -r tag; do
+            [[ "$tag" =~ ^upstream/v[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+            if git merge-base --is-ancestor "$tag" "$UPSTREAM_REF"; then
+              UPSTREAM_TAG=$tag
+              break
+            fi
+          done < <(
+            git for-each-ref --format='%(refname:short)' \
+              --sort=-version:refname refs/tags/upstream/v*
+          )
+
+          if [ -z "$UPSTREAM_TAG" ]; then
+            echo "No stable upstream release tag found on ${UPSTREAM_BRANCH}."
+            exit 1
+          fi
+
+          VERSION=${UPSTREAM_TAG#upstream/}
+          if git merge-base --is-ancestor \
+            "$UPSTREAM_TAG" "origin/${INTEGRATION_BRANCH}"; then
+            echo "${VERSION} is already integrated."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git merge --no-ff --no-commit "$UPSTREAM_TAG"; then
+            # Workflows belong to this fork; accept our versions before checking
+            # whether the upstream merge has conflicts needing human resolution.
+            git restore --source=HEAD --staged --worktree .github/workflows
+            git add .github/workflows
+            CONFLICTS=$(git diff --name-only --diff-filter=U)
+            if [ -n "$CONFLICTS" ]; then
+              echo "Unresolved upstream merge conflicts:"
+              echo "$CONFLICTS"
+              exit 1
+            fi
+          fi
+
+          # Do not import upstream release/publish workflows into this fork.
+          git restore --source=HEAD --staged --worktree .github/workflows
+          git add .github/workflows
+          git commit -m "merge: integrate upstream ${VERSION} into integration"
+          git push origin "HEAD:refs/heads/${INTEGRATION_BRANCH}"
+
+          RELEASE_VERSION=${VERSION#v}
+          GH_TOKEN="$GITHUB_TOKEN" gh workflow run publish.yml \
+            --repo "$GITHUB_REPOSITORY" --ref "$INTEGRATION_BRANCH" \
+            -f version="$RELEASE_VERSION" \
+            -f skip_pypi=true \
+            -f skip_docker=false \
+            -f skip_gh_releases=false
