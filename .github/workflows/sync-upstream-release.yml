@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout integration
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: integration
           fetch-depth: 0
@@ -82,8 +82,16 @@ jobs:
           if ! git merge --no-ff --no-commit "$UPSTREAM_TAG"; then
             # Workflows belong to this fork; accept our versions before checking
             # whether the upstream merge has conflicts needing human resolution.
-            git restore --source=HEAD --staged --worktree .github/workflows
-            git add .github/workflows
+            # `git restore` errors on modify/delete conflicts, so resolve each
+            # conflicted workflow path explicitly instead of a blanket restore.
+            while IFS= read -r path; do
+              [ -n "$path" ] || continue
+              if git cat-file -e "HEAD:$path" 2>/dev/null; then
+                git checkout HEAD -- "$path"
+              else
+                git rm -f -- "$path"
+              fi
+            done < <(git diff --name-only --diff-filter=U -- .github/workflows)
             CONFLICTS=$(git diff --name-only --diff-filter=U)
             if [ -n "$CONFLICTS" ]; then
               echo "Unresolved upstream merge conflicts:"
