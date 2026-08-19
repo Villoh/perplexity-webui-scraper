@@ -34,10 +34,10 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install Dependencies
-        run: uv sync --only-group docs --no-install-project
+        run: uv sync --frozen --no-dev --group docs
 
       - name: Build MkDocs
-        run: uv run mkdocs build --strict
+        run: uv run --no-sync mkdocs build --strict
 
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v5
