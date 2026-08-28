@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Upstream sync workflow:** The nightly sync failed whenever the fork's and upstream's independently generated `uv.lock` files diverged (e.g. a dependency version bump), even though `pyproject.toml` merged cleanly. The workflow now regenerates `uv.lock` from the merged `pyproject.toml` instead of leaving the merge conflicted.
+- **Upstream sync workflow:** The nightly sync failed whenever the fork's and upstream's independently generated `uv.lock` files diverged (e.g. a dependency version bump), even though `pyproject.toml` merged cleanly. The workflow now regenerates `uv.lock` from the merged `pyproject.toml` instead of leaving the merge conflicted. It also failed whenever this fork had an `Unreleased` changelog entry at the same time upstream cut a release, since both sides insert at the same line; `CHANGELOG.md` now uses a `merge=union` git attribute so those entries combine instead of conflicting.
 
 ## [1.1.7] - 2026-08-28
 
