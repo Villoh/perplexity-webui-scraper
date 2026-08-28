@@ -87,6 +87,11 @@ jobs:
             # whether the upstream merge has conflicts needing human resolution.
             # `git restore` errors on modify/delete conflicts, so resolve each
             # conflicted workflow path explicitly instead of a blanket restore.
+            # The path list is captured up front (not piped from a live `git
+            # diff` via process substitution) so it can't race the checkout/rm
+            # calls below for the index lock.
+            CONFLICTED_WORKFLOWS=$(git diff --name-only \
+              --diff-filter=U -- .github/workflows)
             while IFS= read -r path; do
               [ -n "$path" ] || continue
               if git cat-file -e "HEAD:$path" 2>/dev/null; then
@@ -94,7 +99,7 @@ jobs:
               else
                 git rm -f -- "$path"
               fi
-            done < <(git diff --name-only --diff-filter=U -- .github/workflows)
+            done <<< "$CONFLICTED_WORKFLOWS"
 
             # uv.lock is fully derived from pyproject.toml; a conflict there
             # just means both branches resolved it independently, not a real
