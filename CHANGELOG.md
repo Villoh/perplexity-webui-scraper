@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Upstream sync workflow:** The nightly sync failed whenever the fork's and upstream's independently generated `uv.lock` files diverged (e.g. a dependency version bump), even though `pyproject.toml` merged cleanly. The workflow now regenerates `uv.lock` from the merged `pyproject.toml` instead of leaving the merge conflicted.
 
+## [1.1.7] - 2026-08-28
+
+### Changed
+
+- **Model registry:** Updated official WebUI model descriptions and ordering from Perplexity's current v2 configuration, preserving the `Thinking` names represented by the model identifiers.
+
+### Fixed
+
+- **Schematized SSE parsing:** Preserve the complete answer when incremental markdown or workflow chunks are ahead of the stream's final text field.
+
 ## [1.1.6] - 2026-08-25
 
 ### Fixed

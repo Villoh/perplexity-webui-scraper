@@ -18,3 +18,4 @@
 # Collapse auto-generated package lockfiles in GitHub pull requests
 uv.lock linguist-generated=true
 pnpm-lock.yaml linguist-generated=true
+CHANGELOG.md merge=union
