@@ -115,6 +115,7 @@ jobs:
           name: python-dist
           path: dist/*
           if-no-files-found: error
+          retention-days: 1
 
   build_executables:
     name: Build Executable (${{ matrix.target }})
@@ -213,6 +214,7 @@ jobs:
           name: binary-${{ matrix.target }}
           path: release/*
           if-no-files-found: error
+          retention-days: 1
 
   publish_container:
     name: Publish Docker Images
